@@ -43,47 +43,50 @@ function Square(props) {
 // Boardコンポーネントは親
 // 子コンポーネントのSquareにpropsを渡す
 class Board extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      squares: Array(9).fill(null),
-      xIsNext: true,
-    }
-  }
+  // 状態をリフトアップするので削除
+  // constructor(props) {
+  //   super(props);
+  //   this.state = {
+  //     squares: Array(9).fill(null),
+  //     xIsNext: true,
+  //   }
+  // }
 
-  handleClick(i) {
-    const squares = this.state.squares.slice();
-    if (calculateWinner(squares) || squares[i]) {
-      return;
-    }
-    squares[i] = this.state.xIsNext ? 'X' : 'O';
-    this.setState({
-      squares: squares,
-      xIsNext: !this.state.xIsNext,
-    });
-  }
+  // handleClick()メソッドもGameコンポーネントに移動することで、Boardコンポーネントがロジックと状態を持たないコンポーネントになる。
+  // handleClick(i) {
+  //   const squares = this.state.squares.slice();
+  //   if (calculateWinner(squares) || squares[i]) {
+  //     return;
+  //   }
+  //   squares[i] = this.state.xIsNext ? 'X' : 'O';
+  //   this.setState({
+  //     squares: squares,
+  //     xIsNext: !this.state.xIsNext,
+  //   });
+  // }
 
   renderSquare(i) {
     return (
       <Square
-        value={this.state.squares[i]}
-        onClick={() => this.handleClick(i)}
+        value={this.props.squares[i]}
+        onClick={() => this.props.onClick(i)}
       />
     );
   }
 
   render() {
-    const winner = calculateWinner(this.state.squares);
-    let status;
-    if(winner) {
-      status = 'Winner: ' + winner;
-    } else {
-      status = 'Next player: ' + (this.state.xIsNext ? 'X' : 'O');
-    }
+    // Gameコンポーネントにステータス表示の責務が移ったので、renderメソッド内から削除できる
+    // const winner = calculateWinner(this.state.squares);
+    // let status;
+    // if(winner) {
+    //   status = 'Winner: ' + winner;
+    // } else {
+    //   status = 'Next player: ' + (this.state.xIsNext ? 'X' : 'O');
+    // }
 
     return (
       <div>
-        <div className="status">{status}</div>
+        {/* <div className="status">{status}</div> */}
         <div className="board-row">
           {this.renderSquare(0)}
           {this.renderSquare(1)}
@@ -105,15 +108,84 @@ class Board extends React.Component {
 }
 
 class Game extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      history: [{
+        squares: Array(9).fill(null),
+      }],
+      stepNumber: 0,
+      xIsNext: true,
+    };
+  }
+
+  handleClick(i) {
+    // ボタンをクリックして、過去の時点に戻ったときに、その時点より未来の履歴を捨て去ることができる。
+    const history = this.state.history.slice(0, this.state.stepNumber + 1);
+    const current = history[history.length - 1];
+    const squares = current.squares.slice();
+    if (calculateWinner(squares) || squares[i]) {
+      return;
+    }
+    squares[i] = this.state.xIsNext ? 'X' : 'O';
+    this.setState({
+      // concatはpushと違い、元の配列をミューテートしないためこちらを利用する。
+      history: history.concat([{
+        squares: squares,
+      }]),
+      stepNumber: history.length,
+      xIsNext: !this.state.xIsNext,
+    });
+  }
+
+  jumpTo(step) {
+    this.setState({
+      stepNumber: step,
+      xIsNext: (step % 2) === 0,
+    })
+  }
+
+
+  // constructorには初期値をセットする
+  // renderの中に変数を定義して値を代入していく
   render() {
+    const history = this.state.history;
+    const current = history[this.state.stepNumber];
+    const winner = calculateWinner(current.squares);
+
+    const moves = history.map((step, move) => {
+      const desc = move ?
+        'Go to move #' + move :
+        'Go to game start';
+      return (
+        <li key={move}>
+          <button onClick={() => this.jumpTo(move)} >
+            {desc}
+          </button>
+        </li>
+      )
+    })
+
+    let status;
+    if (winner) {
+      status = 'Winner: ' + winner
+    } else {
+      status = 'Next player: ' + (this.state.xIsNext ? 'X' : 'O');
+    }
+
+    // 子コンポーネントの持つstateのkey名がpropsとしての名前になる
+      // squares={current.squares} -> key={value}
     return (
       <div className="game">
         <div className="game-board">
-          <Board />
+          <Board
+            squares={current.squares}
+            onClick={(i) => this.handleClick(i)}
+          />
         </div>
         <div className="game-info">
-          <div>{/* status */}</div>
-          <ol>{/* TODO */}</ol>
+          <div>{ status }</div>
+          <ol>{ moves }</ol>
         </div>
       </div>
     );
@@ -153,3 +225,7 @@ function calculateWinner(squares) {
 // 関数コンポーネントとは、renderメソッドだけを有し、stateをを持たないコンポーネント
   // React．Componentを継承するクラスを定義する代わりに、propsを入力として受け取り、表示すべき内容を返す関数を定義する。
   // 状態やロジックを持たないコンポーネントを作ることで関数コンポーネントを作り出すことができる。controlled components -> functional conmponents
+// 破壊的、非破壊的、新しいオブジェクトを返すイミュータブルなメソッド
+// 動的なliを作成するときは、keyを設定することで何をサイレンリングしないといけないか、reactに知らせることができる
+  // indexをkeyにしてしまうと項目を並び替えたり、挿入/削除の原因となってしまうため避けるべき、一般にはdbにあるidを参照するようにすると良い
+  // keyはグローバルに一意である必要はなく、兄弟の間で一意であれば良い
